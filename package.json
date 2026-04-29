@@ -1,0 +1,15 @@
+{
+  "name": "agente-ia-camaleon",
+  "version": "1.0.0",
+  "description": "Bot Camaleón WhatsApp | Gemini + Green API + Google Docs/Sheets",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.0",
+    "axios": "^1.7.9",
+    "express": "^4.21.2",
+    "googleapis": "^144.0.0"
+  }
+}
