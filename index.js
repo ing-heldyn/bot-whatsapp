@@ -11,9 +11,10 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 const app = express();
 app.use(express.json());
 
-// --- 1. LAS 6 VARIABLES DE ENTORNO (Configuradas en Railway) ---
+// --- 1. LAS 7 VARIABLES DE ENTORNO (Configuradas en Railway) ---
 const {
     GEMINI_API_KEY,
+    GREEN_API_URL,      // ¡NUEVA VARIABLE! (Ej. https://7107.api.greenapi.com)
     ID_INSTANCE,
     API_TOKEN_INSTANCE,
     DOC_ID,
@@ -23,7 +24,7 @@ const {
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
-// Memoria RAM simple para recordar la conversación (Ideal para pruebas rápidas)
+// Memoria RAM simple para recordar la conversación
 const memoryCache = new Map();
 
 // --- 2. EL CEREBRO: PROMPT MAESTRO Y REGLAS ---
@@ -64,26 +65,31 @@ async function fetchCompanyData() {
         const docs = google.docs({ version: 'v1', auth });
         const sheets = google.sheets({ version: 'v4', auth });
 
-        // Leer Reglas del Negocio (Docs)
+        // Leer Reglas del Negocio (Docs) - Lee todo el documento
         const docResult = await docs.documents.get({ documentId: DOC_ID });
         const docText = docResult.data.body.content
             .map(element => element.paragraph?.elements.map(e => e.textRun?.content).join('') || '')
             .join('');
 
-        // Leer Inventario (Sheets)
-        const sheetResult = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: 'A:Z' });
+        // Leer Inventario (Sheets) - Forzamos leer solo la primera hoja ('Sheet1' o 'Hoja 1' genérico)
+        // Pedimos leer toda la hoja activa, sin importar el nombre, para evitar errores si el usuario cambia el nombre de la pestaña
+        const sheetInfo = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID });
+        const firstSheetName = sheetInfo.data.sheets[0].properties.title;
+        
+        const sheetResult = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: `${firstSheetName}!A:Z` });
         const sheetText = (sheetResult.data.values || []).map(row => row.join(' | ')).join('\n');
 
         return { rules: docText, inventory: sheetText };
     } catch (error) {
-        console.error("❌ Error leyendo Google (Revisa tus credenciales):", error.message);
-        return { rules: "Error leyendo reglas.", inventory: "Error leyendo inventario." };
+        console.error("❌ Error leyendo Google:", error.message);
+        return { rules: "Error", inventory: "Error" };
     }
 }
 
 // --- 4. FUNCIÓN PARA ENVIAR WHATSAPP (GREEN API) ---
 async function sendGreenApiMessage(chatId, text) {
-    const url = `https://api.green-api.com/waInstance${ID_INSTANCE}/sendMessage/${API_TOKEN_INSTANCE}`;
+    // Usamos la URL base dinámica que el usuario configuró en Railway
+    const url = `${GREEN_API_URL}/waInstance${ID_INSTANCE}/sendMessage/${API_TOKEN_INSTANCE}`;
     try {
         await axios.post(url, { chatId: chatId, message: text });
     } catch (e) {
@@ -93,80 +99,58 @@ async function sendGreenApiMessage(chatId, text) {
 
 // --- 5. RECEPCIÓN DE MENSAJES (EL WEBHOOK) ---
 app.post('/webhook', async (req, res) => {
-    res.status(200).send('OK'); // Responder rápido a Green API
+    res.status(200).send('OK');
 
     try {
         const body = req.body;
-        // Solo nos interesan los mensajes entrantes
         if (body.typeWebhook !== 'incomingMessageReceived') return;
 
         const messageData = body.messageData;
         const senderData = body.senderData;
-        const chatId = senderData.chatId; // Ejemplo: 51999999999@c.us
+        const chatId = senderData.chatId;
 
-        // Ignorar mensajes de grupos o estados
         if (chatId.includes('@g.us') || chatId === 'status@broadcast') return;
 
         let userText = "";
 
-        // Detectar si es Texto normal
         if (messageData.typeMessage === 'textMessage') {
             userText = messageData.textMessageData.textMessage;
-        } 
-        // Detectar si es Texto respondiendo a otro mensaje (Quote)
-        else if (messageData.typeMessage === 'extendedTextMessage') {
+        } else if (messageData.typeMessage === 'extendedTextMessage') {
             userText = messageData.extendedTextMessageData.text;
-        }
-        // Detectar Imagen (Lee la descripción de la foto si la hay)
-        else if (messageData.typeMessage === 'imageMessage') {
+        } else if (messageData.typeMessage === 'imageMessage') {
             const caption = messageData.imageMessageData.caption || "";
-            userText = `[El usuario envió una imagen]. ${caption}`;
-        }
-        // Detectar Audio
-        else if (messageData.typeMessage === 'audioMessage') {
-            // Nota: Para este tutorial express de 5 min, le indicamos a la IA que asuma que no puede escuchar audios.
-            userText = "[El usuario envió un mensaje de voz. Pídele amablemente que escriba porque estás en un entorno ruidoso]";
+            userText = `[Imagen enviada]. ${caption}`;
+        } else if (messageData.typeMessage === 'audioMessage') {
+            userText = "[Audio recibido. Pide al usuario que escriba texto.]";
         }
 
         if (!userText) return;
 
-        // --- CEREBRO GEMINI EN ACCIÓN ---
-        
-        // 1. Obtener Historial de la RAM
         let history = memoryCache.get(chatId) || [];
         history.push({ role: "user", parts: [{ text: userText }] });
 
-        // 2. Leer Docs y Sheets frescos en cada mensaje (¡Actualización en tiempo real!)
         const companyData = await fetchCompanyData();
         const systemPrompt = buildSystemPrompt(companyData.rules, companyData.inventory);
 
-        // 3. Llamar a la Inteligencia Artificial
         const model = genAI.getGenerativeModel({ 
             model: "gemini-2.5-flash", 
             systemInstruction: systemPrompt 
         });
 
-        // Enviamos el historial menos el último mensaje, y el último mensaje por separado
         const chat = model.startChat({ history: history.slice(0, -1) });
         const result = await chat.sendMessage(userText);
-        
         const botReply = result.response.text();
 
-        // 4. Guardar respuesta en memoria y mantener solo los últimos 10 mensajes (para no saturar RAM)
         history.push({ role: "model", parts: [{ text: botReply }] });
         if (history.length > 10) history = history.slice(history.length - 10);
         memoryCache.set(chatId, history);
 
-        // 5. Enviar la respuesta por WhatsApp
         await sendGreenApiMessage(chatId, botReply);
 
     } catch (error) {
-        console.error("❌ Error General en el Bot:", error);
+        console.error("❌ Error General:", error.message);
     }
 });
 
-// --- INICIAR SERVIDOR ---
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`🚀 Agente Camaleón encendido y escuchando en el puerto ${PORT}`);
-});
+app.listen(PORT, () => console.log(`🚀 Puerto ${PORT}`));
