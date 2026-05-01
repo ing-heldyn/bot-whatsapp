@@ -1,4 +1,4 @@
-# 🦎 Agente IA Camaleón para WhatsApp
+# Agente de Ventas con IA para WhatsApp
 
 ¡Bienvenido! Este es el código oficial del tutorial de YouTube para crear tu propio **Agente de Ventas con Inteligencia Artificial** en 5 minutos.
 
