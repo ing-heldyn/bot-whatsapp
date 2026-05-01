@@ -40,8 +40,8 @@ En este repositorio encontrarás los archivos base para que no empieces desde ce
 ## 💼 Fase de Pruebas vs. Negocio Real
 
 Este tutorial usa las **capas gratuitas** de todas las plataformas. Si vas a usar este bot para atender clientes reales 24/7, los costos de mantenimiento son mínimos:
-*   **Servidor (Railway):** Desde ~$5 USD al mes (para que nunca se apague).
-*   **WhatsApp (Green API):** Licencia "Production" (~$24 USD/mes) para chats ilimitados.
+*   **Servidor (Railway):** (para que nunca se apague).
+*   **WhatsApp (Green API):** Licencia "Production" para chats ilimitados.
 *   **Cerebro (Gemini API):** Pago por uso (centavos de dólar al mes para una Pyme).
 
 *¡Por menos de lo que cuesta una cena, tienes un empleado estrella trabajando día y noche!*
