@@ -1,7 +1,7 @@
 {
-  "name": "agente-ia-camaleon",
+  "name": "agente-ia",
   "version": "1.0.0",
-  "description": "Bot Camaleón WhatsApp | Gemini + Green API + Google Docs/Sheets",
+  "description": "Bot WhatsApp | Gemini + Green API + Google Docs/Sheets",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
